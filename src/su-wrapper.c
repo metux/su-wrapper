@@ -2,13 +2,16 @@
 
     SU wrapper main file.
     
-    copyrigh (c) enrico weigelt <weigelt@nibiru.thur.de>
-		 Werner Fink <werner@suse.de>
+    Copyright (c) Enrico Weigelt <weigelt@nibiru.thur.de>
+		  Werner Fink    <werner@suse.de>
     
-    this code is released under the terms of the 
-    GNU Publics License.
+    This code is released under the terms of the 
+    GNU Public License.
 
 */
+
+//#define DEBUG		/* show debugging output */
+//#define DUMMY		/* test only - no su */
 
 #include <stdio.h>
 #include <unistd.h>
@@ -30,6 +33,12 @@ static int verbose = 0;
 static uid_t euid, ruid;
 static gid_t egid, rgid;
 
+#ifdef DEBUG
+# define dprintf(fmt, arg...)  fprintf(stderr, fmt, ## arg)
+#else
+# define dprintf(fmt, arg...)
+#endif
+
 /*
  * Internal logger, we may use vsyslog() instead vfprintf() here.
  */
@@ -42,10 +51,13 @@ static void _logger (const char *fmt, va_list ap)
 	return;
 }
 
-static inline const char* my_basename ( const char* name )
+static inline char* my_basename ( const char* name )
 {
-	if (name) return basename(name);
-	return "";
+	char * ret = "";
+
+	if (name)
+		ret = basename(name);
+	return ret;
 }
 
 
@@ -104,8 +116,6 @@ static int cmdline_match (char * const mask, char * const argv[])
 {
 	int ret = 0;
     
-	if (!mask) { printf("FAULT!\n"); return 0; }
-
 	if (strlen(mask) == 1) {
 		if (*mask == '-') 		/* match none */
 			if (!*argv) ret = 1;
@@ -113,15 +123,18 @@ static int cmdline_match (char * const mask, char * const argv[])
 	} else {				/* real wildcards not yet implemented, see regex(3) */
 		char *l = strdupa(mask);
 		char *oslot;
-		int n, o[_POSIX_ARG_MAX];	/* o is our option vector for found options */
+		size_t max = _POSIX_ARG_MAX - 1;	/* no real argv[0] */
+		int n, o[max];			/* o is our option vector for found options */
 
 		ret = 1;
 		if (!*argv)
 			goto out;
 
 		memset(o, 0, sizeof(o));
-		while ((oslot = strsep(&l, ",:")) && *oslot) {
-			for (n = 0; n < _POSIX_ARG_MAX && argv[n]; n++) {
+		while ((oslot = strsep(&l, ",:"))) {
+			if (!*oslot)		/* empty slot means no slot */
+				continue;
+			for (n = 0; n < max && argv[n]; n++) {
 				if (!strcmp(oslot, argv[n]))
 					o[n]++;
 			}
@@ -129,7 +142,7 @@ static int cmdline_match (char * const mask, char * const argv[])
 
 						/* -lf is not -fl and not -l -f or -f -l */
 		ret = 1;
-		for (n = 0; n <= _POSIX_ARG_MAX && argv[n]; n++)
+		for (n = 0; n < max && argv[n]; n++)
 			if (!o[n])
 				ret = 0;
 	}
@@ -274,6 +287,9 @@ static void do_su (entry_t * entry)
 	if (seteuid(euid) < 0) error("seteuid() failed: %s\n", strerror(errno));
 	if (setegid(egid) < 0) error("setegid() failed: %s\n", strerror(errno));
 
+#ifdef DUMMY	
+	printf ( "dummy\n" );
+#else
 	if (setregid(new_gid, new_gid))
 		error("setregid() failed: %s\n", strerror(errno));
 
@@ -285,6 +301,7 @@ static void do_su (entry_t * entry)
 
 	if (chdir(new_pwd))
 		error("chdir() failed: %s\n", strerror(errno));
+#endif
 
 	execve(entry->run_command, entry->params, environ);
 	error("execve() failed: %s\n", strerror(errno));
@@ -294,17 +311,20 @@ static char line[LINE_MAX];
 static entry_t* check_against_table (CHR filename, char *argv[])
 {
 	FILE *table;
-	char  *l = line;
+	char *l = line;
 	char *cslot;
-	int   nslot, argc = 1, found = 0;
+	int   nslot, argc = 1, found = 0, at = 0;
 	char *user  = get_current_user();
 	char *group = get_current_group();
 	entry_t *e = &entry;
+	char *  cmdname = my_basename(argv[0]);
+	char ** cmdline = argv+1;
 
 	if (!(table = fopen (filename, "r")))
 		error("Could not open %s: %s\n", filename, strerror(errno));
 
 	while (fgets(line, LINE_MAX, table)) {
+		at++;
 
 		if (*(l = (char*)line) == '#') continue;
 		if (*l == '\n') continue;
@@ -312,59 +332,66 @@ static entry_t* check_against_table (CHR filename, char *argv[])
 		memset((void*)e, 0, sizeof(e));
 		nslot = 0;
 		argc = 1;
-		printf("====\n");
-		while ((cslot = strsep(&l, " \t\n")) && *cslot) {
+		dprintf("Table check at line %d\n", at);
+		while ((cslot = strsep(&l, " \t\n"))) {
+			if (!*cslot)		/* empty slot means no slot */
+				continue;
 			switch (++nslot) {
 			case 1:
 				e->called_user = cslot;
-				printf("called_user=%s\n", cslot);
+				dprintf("called_user=%s\n", cslot);
 				break;
 			case 2:
 				e->called_group = cslot;
-				printf("called_group=%s\n", cslot);
+				dprintf("called_group=%s\n", cslot);
 				break;
 			case 3:
-				printf("called_command=%s\n", cslot);
+				dprintf("called_command=%s\n", cslot);
 				e->called_command = cslot;
 				break;
 			case 4:
-				printf("called_cmdline=%s\n", cslot);
+				dprintf("called_cmdline=%s\n", cslot);
 				e->called_cmdline = cslot;
 				break;
 			case 5:
-				printf("run_user=%s\n", cslot);
+				dprintf("run_user=%s\n", cslot);
 				e->run_user = cslot;
 				break;
 			case 6:
-				printf("run_group=%s\n", cslot);
+				dprintf("run_group=%s\n", cslot);
 				e->run_group = cslot;
 				break;
 			case 7:
-				printf("run_cslot=%s\n", cslot);
+				dprintf("run_cslot=%s\n", cslot);
 				e->run_command = cslot;
 				break;
 			default:
-				printf("run_params=%s\n", cslot);
+				dprintf("run_params[%d]=%s\n", argc, cslot);
+				if (argc > _POSIX_ARG_MAX)
+					break;
 				e->params[argc++] = cslot;
 				break;
 			}
 		}
-		if (!wildcard_match(e->called_command, my_basename(argv[0])))
+		if (nslot < 7)			/* One field is empty */
+			goto err;
+
+		if (!wildcard_match(e->called_command, cmdname))
 			continue;
 		if (!wildcard_match(e->called_user,    user))
 			continue;
 		if (!wildcard_match(e->called_group,   group))
 			continue;
-//		if (!cmdline_match(e->called_cmdline,  (argv+1)))
-//			continue;
-		if (!cmdline_match(e->called_cmdline, argv))
+		if (!cmdline_match(e->called_cmdline,  cmdline))
 			continue;
 		
-		if (e->run_command && (!strcmp(e->run_command, "-")))
+		if (!strcmp(e->run_command, "-"))
 			error("explicitly forbidden\n");
 
 		found++;
 		break;
+err:
+		warn("wrong entry in " CONFIGFILE " at line %d\n", at);
 	}
 
 	if (!found)
@@ -372,11 +399,11 @@ static entry_t* check_against_table (CHR filename, char *argv[])
 	else {
 		e->params[0] = e->called_command; /* first argument */
 		if (*(argv+1)) {
-			char ** ptr = (argv+1);
+			size_t max = _POSIX_ARG_MAX - argc;
 			int n;
 
-			for (n = 0; n < _POSIX_ARG_MAX && ptr[n] ; n++)
-				e->params[argc++] = ptr[n];
+			for (n = 0; n < max && cmdline[n] ; n++)
+				e->params[argc++] = cmdline[n];
 		}
 		e->params[argc] = NULL;		  /* last argument */
 	}
@@ -394,24 +421,29 @@ int main (int argc, char * argv[])
 	if (setegid(rgid) < 0) error("setegid() failed: %s\n", strerror(errno));
 	euid = geteuid(); ruid = getuid();
 	if (seteuid(ruid) < 0) error("seteuid() failed: %s\n", strerror(errno));
-
 	
 	if (!strcmp(myname, my_basename(argv[0]))) {
 		argc--;
 		argv++;
 	}
 
+	if (!argv[0])
+		error("permission denied\n");
+    
+	dprintf("checking against table \n");
+	
 	entry = check_against_table(CONFIGFILE, argv);
 	if (!entry)
 		error("permission denied\n");
 
+#ifdef DEBUG
+	verbose++;
+#else
 	if (getenv("SUWRAP_DEBUG"))
 		verbose++;
+#endif
 
 	term = getenv("TERM");
-
-	verbose++;
-	
 
 #if 0
 	/*

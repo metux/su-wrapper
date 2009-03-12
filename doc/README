@@ -71,7 +71,7 @@ Example 3:
     
     add this to /etc/su-wrapper.conf
     
-    nekrad	*	become-devel	*	devel.users	"su devel"
+    nekrad	*	become-devel	*	devel.users	su devel
      
     and make an symlink:
     
@@ -79,7 +79,11 @@ Example 3:
     
     now if nekrad calls 'become-devel' (s)he will be su'ed to devel,
     but all others get 'permission denied'.
-    
+
+Changes:
+
+    * comletely rewritten since 1.1
+    * fixed some ugly buffer overflow exploits    
 
 good luck,
 

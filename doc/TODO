@@ -1,8 +1,10 @@
 
-- add variables for the configuration
+* add variables for the configuration
 
-$USER	calling user
-$GROUP	calling group
+    $USER	calling user
+    $GROUP	calling group
 
-- better pattern matching (especially for cmdlines)
-- manual page is missed
+* better pattern matching (especially for cmdlines)
+* manual page is missed
+
+* use syslog logging
