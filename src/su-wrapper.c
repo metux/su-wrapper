@@ -10,8 +10,17 @@
 
 */
 
+/*	
+    2001-10-25	added special handling for shell commands 
+		(these are written in "")		--ew
+    2001-10-26	fixed parameter matching		--ew
+*/
+
 //#define DEBUG		/* show debugging output */
 //#define DUMMY		/* test only - no su */
+
+/* shell for executing stuff in "" */
+#define SHELL	"/bin/sh"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -115,39 +124,69 @@ static int wildcard_match ( CHR mask, CHR value )
 static int cmdline_match (char * const mask, char * const argv[])
 {
 	int ret = 0;
+	char* m_arg[_POSIX_ARG_MAX + 1]; /* HERE */
+	int walk;
     
 	if (strlen(mask) == 1) {
 		if (*mask == '-') 		/* match none */
 			if (!*argv) ret = 1;
 		if (*mask == '*')   ret = 1;	/* match any */
-	} else {				/* real wildcards not yet implemented, see regex(3) */
-		char *l = strdupa(mask);
-		char *oslot;
-		size_t max = _POSIX_ARG_MAX - 1;	/* no real argv[0] */
-		int n, o[max];			/* o is our option vector for found options */
+	} 					/* real wildcards not yet implemented, see regex(3) */
 
-		ret = 1;
-		if (!*argv)
-			goto out;
+/* GRUETZE!
 
-		memset(o, 0, sizeof(o));
-		while ((oslot = strsep(&l, ",:"))) {
-			if (!*oslot)		/* empty slot means no slot */
-				continue;
-			for (n = 0; n < max && argv[n]; n++) {
-				if (!strcmp(oslot, argv[n]))
-					o[n]++;
-			}
-		}
+    verschiedene options kommen dann mit regex ...
+    parameter-uebergabe kommt dann spaeter mit variablen ($0 $1 usw)
+    
+//		char *l = strdupa(mask);
+//		char *oslot;
+//		size_t max = _POSIX_ARG_MAX - 1;	/* no real argv[0] */
+//		int n, o[max];			/* o is our option vector for found options */
+//
+//		ret = 1;
+//		if (!*argv)
+//			goto out;
+//
+//		memset(o, 0, sizeof(o));
+//		while ((oslot = strsep(&l, ",:"))) {
+//			if (!*oslot)		/* empty slot means no slot */
+//				continue;
+//			for (n = 0; n < max && argv[n]; n++) {
+//				if (!strcmp(oslot, argv[n]))
+//					o[n]++;
+//			}
+//		}
+//
+//						/* -lf is not -fl and not -l -f or -f -l */
+//		ret = 1;
+//		for (n = 0; n < max && argv[n]; n++)
+//			if (!o[n])
+//				ret = 0;
+//	}
+//out:
+//	return ret;
 
-						/* -lf is not -fl and not -l -f or -f -l */
-		ret = 1;
-		for (n = 0; n < max && argv[n]; n++)
-			if (!o[n])
-				ret = 0;
-	}
-out:
-	return ret;
+    /* FIXME!!! derzeit nur ein parameter supported */
+    /* sollte irgentwie aufgesplittet werden ... */
+    m_arg[0] = mask;
+    m_arg[1] = NULL;
+
+    walk=0;
+    while ((m_arg[walk]) && (argv[walk])) {
+	if (strcmp(m_arg[walk],"*")==0) goto matched;
+	if (strcmp(m_arg[walk],argv[walk])) goto nomatch;
+	walk++;
+    }
+    if ((m_arg[walk]) && (!(strcmp(m_arg[walk],"*")))) goto matched;
+    if ((m_arg[walk])||(argv[walk])) goto nomatch;    
+
+matched:
+    dprintf("MATCH\n");
+    return 1;
+        
+nomatch:
+    dprintf("NOMATCH\n");    
+    return 0;
 }
 			
 static inline char * get_current_user ()
@@ -280,7 +319,9 @@ static void do_su (entry_t * entry)
 		error("putenv() failed: %s\n", strerror(errno));
 	if (xputenv("SHELL", new_shell))
 		error("putenv() failed: %s\n", strerror(errno));
-
+	if (xputenv("FOO", "foo123_knolle"))
+		error("putenv() failed: %s\n", strerror(errno));
+	
 	/*
 	 * Get real root back
 	 */
@@ -288,7 +329,7 @@ static void do_su (entry_t * entry)
 	if (setegid(egid) < 0) error("setegid() failed: %s\n", strerror(errno));
 
 #ifdef DUMMY	
-	printf ( "dummy\n" );
+	dprintf ( "dummy\n" );
 #else
 	if (setregid(new_gid, new_gid))
 		error("setregid() failed: %s\n", strerror(errno));
@@ -302,7 +343,6 @@ static void do_su (entry_t * entry)
 	if (chdir(new_pwd))
 		error("chdir() failed: %s\n", strerror(errno));
 #endif
-
 	execve(entry->run_command, entry->params, environ);
 	error("execve() failed: %s\n", strerror(errno));
 }
@@ -320,6 +360,9 @@ static entry_t* check_against_table (CHR filename, char *argv[])
 	char *  cmdname = my_basename(argv[0]);
 	char ** cmdline = argv+1;
 
+
+	dprintf ("cmdname=\"%s\" cmdline=\"%s\"\n", cmdname, *cmdline );
+	
 	if (!(table = fopen (filename, "r")))
 		error("Could not open %s: %s\n", filename, strerror(errno));
 
@@ -360,21 +403,46 @@ static entry_t* check_against_table (CHR filename, char *argv[])
 			case 6:
 				dprintf("run_group=%s\n", cslot);
 				e->run_group = cslot;
+		
+				/* special handling for string with "" -- goes to shell */
+				if (*l == '"') {
+				    int i;
+				    l++;
+				    
+				    i = strlen(l);
+				    while (i>0) {
+					if (l[i]=='"') {
+					    l[i] = 0;
+					    goto __x;
+					}
+					i--;
+				    }
+				    	    
+				__x:				    
+				    dprintf ( "run_shellcmd=\"%s\"\n", l );
+				    e->run_command = SHELL;
+				    e->params[argc++] = "-c";
+				    e->params[argc++] = l;
+				    goto do_check;
+				}	    
 				break;
 			case 7:
 				dprintf("run_cslot=%s\n", cslot);
 				e->run_command = cslot;
-				break;
+				break;	
 			default:
 				dprintf("run_params[%d]=%s\n", argc, cslot);
 				if (argc > _POSIX_ARG_MAX)
 					break;
 				e->params[argc++] = cslot;
+				
 				break;
 			}
 		}
 		if (nslot < 7)			/* One field is empty */
 			goto err;
+
+do_check:
 
 		if (!wildcard_match(e->called_command, cmdname))
 			continue;
@@ -422,13 +490,8 @@ int main (int argc, char * argv[])
 	euid = geteuid(); ruid = getuid();
 	if (seteuid(ruid) < 0) error("seteuid() failed: %s\n", strerror(errno));
 	
-	if (!strcmp(myname, my_basename(argv[0]))) {
-		argc--;
-		argv++;
-	}
-
 	if (!argv[0])
-		error("permission denied\n");
+		error("permission denied (no argv0)\n");
     
 	dprintf("checking against table \n");
 	
