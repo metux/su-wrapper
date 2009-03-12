@@ -1,0 +1,7 @@
+
+- add variables for the configuration
+
+$USER	calling user
+$GROUP	calling group
+
+- better pattern matching (especially for cmdlines)
