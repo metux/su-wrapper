@@ -2,7 +2,7 @@
 
     SU wrapper main file.
     
-    Copyright (c) Enrico Weigelt <weigelt@nibiru.thur.de>
+    Copyright (c) Enrico Weigelt <weigelt@nibiru.thur.de> (nekrad)
 		  Werner Fink    <werner@suse.de>
     
     This code is released under the terms of the 
@@ -11,16 +11,40 @@
 */
 
 /*	
+    2002-06-29	moved out static names to build-time 
+                configurable defines
+							--nekrad
     2001-10-25	added special handling for shell commands 
-		(these are written in "")		--ew
-    2001-10-26	fixed parameter matching		--ew
+		(these are written in "")	
+							--nekrad
+    2001-10-26	fixed parameter matching		--nekrad
 */
 
 //#define DEBUG		/* show debugging output */
 //#define DUMMY		/* test only - no su */
 
+#define CF_VERSION	"1.2.3"
+
 /* shell for executing stuff in "" */
-#define SHELL	"/bin/sh"
+#define CF_EXEC_SHELL	"/bin/sh"
+
+/* config file where to get the table from */
+#define CF_CONFIGFILE	"/etc/su-wrapper.conf"
+
+/* my own application name for logging */
+#define CF_LOG_NAME	"su-wrapper"
+
+/* fallback user+group if uid lookup fails */
+#define CF_FALLBACK_USER	"nobody"
+#define CF_FALLBACK_GROUP	"nogroup"
+
+#define CF_FALLBACK_PWD		"/tmp"
+#define CF_FALLBACK_SHELL	"/bin/false"
+
+#define CF_PATH_PRIVILEGED	"/sbin:/usr/sbin:/bin:/usr/bin:/usr/bin/X11"
+#define CF_PATH_UNPRIVILEGED	"/usr/local/bin:/bin:/usr/bin:/usr/bin/X11"
+
+#define CF_SUPER_USER		"root"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -35,7 +59,6 @@
 #include <sys/types.h>
 extern char **environ;
 
-#define CONFIGFILE	"/etc/su-wrapper.conf"
 typedef const char * CHR;
 static int verbose = 0;
 
@@ -51,7 +74,7 @@ static gid_t egid, rgid;
 /*
  * Internal logger, we may use vsyslog() instead vfprintf() here.
  */
-static char *myname = "su-wrapper";
+static char *myname = CF_LOG_NAME;
 static void _logger (const char *fmt, va_list ap)
 {
 	char buf[strlen(myname)+2+strlen(fmt)+1];
@@ -94,7 +117,8 @@ static void warn (const char *fmt, ...)
 	return;
 }
 
-struct entry_struct {
+struct entry_struct 
+{
         char * called_user;
         char * called_group;
         char * called_command;
@@ -105,16 +129,20 @@ struct entry_struct {
         char * params[_POSIX_ARG_MAX + 1];
 };
 typedef struct entry_struct entry_t;
+
+
 static entry_t entry;
 
 static int wildcard_match ( CHR mask, CHR value )
 {
 	int ret = 0;
 
-	if (strlen(mask) == 1) {
+	if (strlen(mask) == 1) 
+	{
 		if (*mask == '-') ret = 1;	/* ignore -> match any */
 		if (*mask == '*') ret = 1;	/* match any */
-	} else {				/* real wildcards not yet implemented, see regex(3) */
+	} else 
+	{				/* real wildcards not yet implemented, see regex(3) */
 		if (!strcmp(mask, value))	/* direct match */
 			ret = 1;
 	}
@@ -127,7 +155,8 @@ static int cmdline_match (char * const mask, char * const argv[])
 	char* m_arg[_POSIX_ARG_MAX + 1]; /* HERE */
 	int walk;
     
-	if (strlen(mask) == 1) {
+	if (strlen(mask) == 1) 
+	{
 		if (*mask == '-') 		/* match none */
 			if (!*argv) ret = 1;
 		if (*mask == '*')   ret = 1;	/* match any */
@@ -140,8 +169,8 @@ static int cmdline_match (char * const mask, char * const argv[])
     
 //		char *l = strdupa(mask);
 //		char *oslot;
-//		size_t max = _POSIX_ARG_MAX - 1;	/* no real argv[0] */
-//		int n, o[max];			/* o is our option vector for found options */
+//		size_t max = _POSIX_ARG_MAX - 1;	//no real argv[0] 
+//		int n, o[max];			// o is our option vector for found options
 //
 //		ret = 1;
 //		if (!*argv)
@@ -149,7 +178,7 @@ static int cmdline_match (char * const mask, char * const argv[])
 //
 //		memset(o, 0, sizeof(o));
 //		while ((oslot = strsep(&l, ",:"))) {
-//			if (!*oslot)		/* empty slot means no slot */
+//			if (!*oslot)		// empty slot means no slot 
 //				continue;
 //			for (n = 0; n < max && argv[n]; n++) {
 //				if (!strcmp(oslot, argv[n]))
@@ -157,7 +186,7 @@ static int cmdline_match (char * const mask, char * const argv[])
 //			}
 //		}
 //
-//						/* -lf is not -fl and not -l -f or -f -l */
+//						// -lf is not -fl and not -l -f or -f -l 
 //		ret = 1;
 //		for (n = 0; n < max && argv[n]; n++)
 //			if (!o[n])
@@ -165,20 +194,21 @@ static int cmdline_match (char * const mask, char * const argv[])
 //	}
 //out:
 //	return ret;
-
+*/
     /* FIXME!!! derzeit nur ein parameter supported */
     /* sollte irgentwie aufgesplittet werden ... */
     m_arg[0] = mask;
     m_arg[1] = NULL;
 
     walk=0;
-    while ((m_arg[walk]) && (argv[walk])) {
-	if (strcmp(m_arg[walk],"*")==0) goto matched;
-	if (strcmp(m_arg[walk],argv[walk])) goto nomatch;
+    while ((m_arg[walk]) && (argv[walk])) 
+    {
+	if (strcmp(m_arg[walk],"*")==0) 	goto matched;
+	if (strcmp(m_arg[walk],argv[walk])) 	goto nomatch;
 	walk++;
     }
-    if ((m_arg[walk]) && (!(strcmp(m_arg[walk],"*")))) goto matched;
-    if ((m_arg[walk])||(argv[walk])) goto nomatch;    
+    if ((m_arg[walk]) && (!(strcmp(m_arg[walk],"*")))) 	goto matched;
+    if ((m_arg[walk])||(argv[walk])) 			goto nomatch;    
 
 matched:
     dprintf("MATCH\n");
@@ -192,12 +222,12 @@ nomatch:
 static inline char * get_current_user ()
 {
 	struct passwd * pw = getpwuid(getuid());
-	char * ret = "nobody";
+	char * ret = CF_FALLBACK_USER;
 
 	if (pw)
 		ret = pw->pw_name;
 	else
-		warn("could not determine current user name ... defaulting to \"nobody\"\n");
+		warn("could not determine current user name ... defaulting to \"" CF_FALLBACK_USER "\"\n");
 
 	return ret;
 }
@@ -205,12 +235,12 @@ static inline char * get_current_user ()
 static inline char * get_current_group ()
 {
 	struct group * gr = getgrgid(getgid());
-	char * ret = "nogroup";
+	char * ret = CF_FALLBACK_GROUP;
 
 	if (gr)
 		ret = gr->gr_name;
 	else
-		warn("could not determine current group name ... defaulting to \"nogroup\"\n");
+		warn("could not determine current group name ... defaulting to \"" CF_FALLBACK_GROUP "\"\n");
 
 	return ret;
 }
@@ -223,7 +253,7 @@ static inline uid_t lookup_uid ( CHR name )
 	if (pw)
 		uid = pw->pw_uid;
 	else
-		warn("could not determine current user id ... defaulting to \"nobody\"\n");
+		warn("could not determine current user id ... defaulting to \"" CF_FALLBACK_USER "\"\n");
 
 	return uid;
 }
@@ -236,7 +266,7 @@ static inline gid_t lookup_gid ( CHR name )
 	if (gr)
 		gid = gr->gr_gid;
 	else
-		warn("could not determine current group id ... defaulting to \"nogroup\"\n");
+		warn("could not determine current group id ... defaulting to \"" CF_FALLBACK_GROUP "\"\n");
 
 	return gid;
 }
@@ -244,12 +274,12 @@ static inline gid_t lookup_gid ( CHR name )
 static inline char * lookup_pwd ( CHR name )
 {
 	struct passwd * pw = getpwnam(name);
-	char * pwd = "/tmp";
+	char * pwd = CF_FALLBACK_PWD;
 
 	if (pw)
 		pwd = pw->pw_dir;
 	else
-		warn("could not determine current home ... defaulting to \"/tmp\"\n");
+		warn("could not determine current home ... defaulting to \"" CF_FALLBACK_PWD "\"\n");
 
 	return pwd;
 }
@@ -257,12 +287,12 @@ static inline char * lookup_pwd ( CHR name )
 static inline char * lookup_shell ( CHR name )
 {
 	struct passwd * pw = getpwnam(name);
-	char * shell = "/bin/false";
+	char * shell = CF_FALLBACK_SHELL;
 
 	if (pw)
 		shell = pw->pw_shell;
 	else
-		warn("could not determine current shell ... defaulting to \"/bin/false\"\n");
+		warn("could not determine current shell ... defaulting to \"" CF_FALLBACK_SHELL "\"\n");
 
 	return shell;
 }
@@ -360,13 +390,13 @@ static entry_t* check_against_table (CHR filename, char *argv[])
 	char *  cmdname = my_basename(argv[0]);
 	char ** cmdline = argv+1;
 
-
 	dprintf ("cmdname=\"%s\" cmdline=\"%s\"\n", cmdname, *cmdline );
 	
 	if (!(table = fopen (filename, "r")))
 		error("Could not open %s: %s\n", filename, strerror(errno));
 
-	while (fgets(line, LINE_MAX, table)) {
+	while (fgets(line, LINE_MAX, table)) 
+	{
 		at++;
 
 		if (*(l = (char*)line) == '#') continue;
@@ -405,13 +435,16 @@ static entry_t* check_against_table (CHR filename, char *argv[])
 				e->run_group = cslot;
 		
 				/* special handling for string with "" -- goes to shell */
-				if (*l == '"') {
+				if (*l == '"') 
+				{
 				    int i;
 				    l++;
 				    
 				    i = strlen(l);
-				    while (i>0) {
-					if (l[i]=='"') {
+				    while (i>0) 
+				    {
+					if (l[i]=='"') 
+					{
 					    l[i] = 0;
 					    goto __x;
 					}
@@ -420,7 +453,7 @@ static entry_t* check_against_table (CHR filename, char *argv[])
 				    	    
 				__x:				    
 				    dprintf ( "run_shellcmd=\"%s\"\n", l );
-				    e->run_command = SHELL;
+				    e->run_command = CF_EXEC_SHELL;
 				    e->params[argc++] = "-c";
 				    e->params[argc++] = l;
 				    goto do_check;
@@ -459,14 +492,15 @@ do_check:
 		found++;
 		break;
 err:
-		warn("wrong entry in " CONFIGFILE " at line %d\n", at);
+		warn("wrong entry in " CF_CONFIGFILE " at line %d\n", at);
 	}
 
 	if (!found)
 		e = NULL;
 	else {
 		e->params[0] = e->called_command; /* first argument */
-		if (*(argv+1)) {
+		if (*(argv+1)) 
+		{
 			size_t max = _POSIX_ARG_MAX - argc;
 			int n;
 
@@ -495,7 +529,7 @@ int main (int argc, char * argv[])
     
 	dprintf("checking against table \n");
 	
-	entry = check_against_table(CONFIGFILE, argv);
+	entry = check_against_table(CF_CONFIGFILE, argv);
 	if (!entry)
 		error("permission denied\n");
 
@@ -540,10 +574,10 @@ int main (int argc, char * argv[])
 	/*
 	 * overwrite PATH environment variable.
 	 */
-	if (!strcmp(entry->run_user, "root"))
-		xputenv("PATH", "/sbin:/usr/sbin:/bin:/usr/bin:/usr/bin/X11");
+	if (!strcmp(entry->run_user, CF_SUPER_USER))
+		xputenv("PATH", CF_PATH_PRIVILEGED);
 	else
-		xputenv("PATH", "/usr/local/bin:/bin:/usr/bin:/usr/bin/X11");
+		xputenv("PATH", CF_PATH_UNPRIVILEGED);
 	if (errno)
 		error("putenv() failed: %s\n", strerror(errno));
 	if (xputenv("TERM", term))
