@@ -254,7 +254,7 @@ int do_su ( CHR cmd, CHR cmdline )
 		entry->run_command, entry->run_user, new_uid, new_gid );
 	}
 	
-	if (setgid(new_gid)==-1) {
+	if (setregid(new_gid, new_gid)==-1) {
 //		printf("su_wrapper: setgid() permission denied ! \n");
 //		return 0;
 	}
