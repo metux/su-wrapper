@@ -5,3 +5,4 @@ $USER	calling user
 $GROUP	calling group
 
 - better pattern matching (especially for cmdlines)
+- manual page is missed
