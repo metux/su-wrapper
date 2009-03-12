@@ -1,3 +1,14 @@
+/*
+
+    SU wrapper main file.
+    
+    copyrigh (c) enrico weigelt <weigelt@nibiru.thur.de>
+    
+    this code is released under the terms of the 
+    GNU Publics License.
+
+*/
+
 /* TODO: use exec() insted of system -- 
     this will overwrite the wrapper's process image and so save memory 
 */

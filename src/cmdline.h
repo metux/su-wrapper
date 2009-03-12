@@ -1,12 +1,11 @@
 /*
 
-	  Command line tools
+    Command line tools
 
-	  Copyright (C) ETEC Corporation / SCICOM Group
-	  All rights reserved.
+    Copyright (C) 2001 Enrico Weigelt <weigelt@nibiru.thur.de>
 
-          DATE = 19980811//cane//der.eine
-
+    this code is released under the terms of the GPL.
+    		  
 */
 
 #ifndef __cmdline_tools__

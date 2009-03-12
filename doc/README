@@ -1,0 +1,87 @@
+
+su-wrapper is an little util which lets special users
+execute processes under another uid/gid.
+
+it uses an table ( /etc/su-wrapper.conf ) to decide what
+to do in certain situation. therefore it walks through
+the table and tries to match the current situation
+(the later entries have precedence).
+
+the config table
+
+    current UID  --+       +-- 
+    current GID    |       |   exec UID
+    argv[0]        | ====> |   exec GID
+    argv[1]        |       |   exec cmdline
+    ...          --+       +--
+    
+for more information please look at the su-wrapper.conf
+
+
+INSTALL:
+
+* if you got the sources, go into the src subdir and do 
+
+    make
+    make install
+    
+  note that you have to be root, of course.
+
+    
+* copy the file su-wrapper.conf.dist to /etc/su-wrapper.conf 
+  and edit it. more information about the syntax can
+  be found in this file.
+  
+ 
+USAGE:
+
+Example 1: 
+    
+    you simply want to give each user the ability to start the 
+    print spool daemon.
+    
+    add the following line into your /etc/su-wrapper.conf
+    
+    *	*	*	lpd	root	root	"/usr/sbin/lpd"
+    
+    then each user may call /usr/sbin/su-wrapper lpd
+    
+    now /usr/sbin/lpd will be executed as root.
+    
+Example 2:
+
+    you wanna get rid of the Xwrapper and the suid root Xserver.
+    
+    perhaps add this line to /etc/su-wrapper.conf
+    
+    *	*	Xserver	*	root	root	"/usr/X11R6/bin/XF86_SVGA"
+    
+    and make an symlink from /usr/X11R6/bin/Xserver to the su-wrapper:
+    
+    ln -s /usr/sbin/su-wrapper /usr/X11R6/bin/Xserver
+    
+    now if the su-wrapper is started under the name Xserver, it will
+    call the XF86_SVGA under root.
+    
+
+Example 3:
+
+    you wanna build an user-2-user gate: user nekrad should be allowed 
+    to switch to user devel.
+    
+    add this to /etc/su-wrapper.conf
+    
+    nekrad	*	become-devel	*	devel.users	"su devel"
+     
+    and make an symlink:
+    
+    ln -s /usr/sbin/su-wrapper become-devel
+    
+    now if nekrad calls 'become-devel' (s)he will be su'ed to devel,
+    but all others get 'permission denied'.
+    
+
+good luck,
+
+enrico weigelt <weigelt@nibiru.thur.de>
+

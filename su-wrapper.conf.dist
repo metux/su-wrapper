@@ -36,7 +36,7 @@
 *	*	inet-down	*	root	root	/usr/bin/autonet off
 *	*	inet-poll	*	root	root	/usr/bin/autonet poll
 *	*	XServer		*	root	root	/usr/X11R6/bin/X
-*	*	rootshell	*	root	root	/bin/sh
+marduk	*	rootshell	*	root	root	/bin/sh
 
 # deny nobody everything, each call from nobody ends up in an empty command
 nobody	-	*		*	-	-	-
